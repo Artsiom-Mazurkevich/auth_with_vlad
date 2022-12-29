@@ -7,7 +7,7 @@ export class AuthController {
     constructor(private authService: AuthService) {}
     @Post('local/signup')
     localSignup(@Body() dto: AuthDto) {
-        this.authService.localSignup(dto)
+        return this.authService.localSignup(dto)
     }
     @Post('local/signin')
     localSignin() {
