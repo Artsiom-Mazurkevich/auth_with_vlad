@@ -1,10 +1,15 @@
-import { BadRequestException, HttpException, Injectable } from '@nestjs/common'
+import {
+    BadRequestException,
+    ForbiddenException,
+    HttpException,
+    Injectable,
+    InternalServerErrorException,
+} from '@nestjs/common'
 import { AuthDto } from './dto'
 import * as argon from 'argon2'
 import { ResponseTokens } from './types'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
-import { config } from 'rxjs'
 import { Model } from 'mongoose'
 import { InjectModel } from '@nestjs/mongoose'
 import { User, UserDocument } from '../schemas/user.schema'
@@ -53,33 +58,33 @@ export class AuthService {
     async updateRtHash(userId: string, oldRefreshToken: string) {
         const newRefreshToken = await this.hashData(oldRefreshToken)
         await this.userModel.findByIdAndUpdate(userId, { hashedRt: newRefreshToken })
-        // await this.prisma.user.update({
-        //     where: {
-        //         id: userId,
-        //     },
-        //     data: {
-        //         hashedRt: newRefreshToken,
-        //     },
-        // })
     }
 
     async localSignup(dto: AuthDto): Promise<ResponseTokens> {
         const hashedPass = await this.hashData(dto.password)
-        // const candidate = await this.prisma.user.findUnique({ where: { email: dto.email } })
         const candidate = await this.userModel.findOne({ email: dto.email })
-        if (candidate) throw new BadRequestException()
-        // const newUser = await this.prisma.user.create({
-        //     data: {
-        //         email: dto.email,
-        //         hash: hashedPass,
-        //     },
-        // })
+        if (candidate) throw new BadRequestException('User with this email already exist')
         const newUser = await this.userModel.create({ email: dto.email, hash: hashedPass })
         const tokens = await this.create_JWT_Tokens(newUser.id, newUser.email)
         await this.updateRtHash(newUser.id, tokens.refresh_token)
         return tokens
     }
-    localSignin() {}
-    logout() {}
+    async localSignin(dto: AuthDto): Promise<ResponseTokens> {
+        const user = await this.userModel.findOne({ email: dto.email })
+        if (!user) throw new BadRequestException('User with this email does not exist')
+        const matchHash = await argon.verify(user.hash, dto.password)
+        if (!matchHash) throw new ForbiddenException()
+        const tokens = await this.create_JWT_Tokens(user.id, user.email)
+        await this.updateRtHash(user.id, tokens.refresh_token)
+        return tokens
+    }
+    async logout(userId: string) {
+        try {
+            await this.userModel.findByIdAndUpdate(userId, { hashedRt: null })
+            return 'logout success'
+        } catch (e) {
+            throw new InternalServerErrorException('unexpected error: ', e)
+        }
+    }
     refreshTokens() {}
 }
