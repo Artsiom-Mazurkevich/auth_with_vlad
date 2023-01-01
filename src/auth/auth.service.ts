@@ -86,5 +86,13 @@ export class AuthService {
             throw new InternalServerErrorException('unexpected error: ', e)
         }
     }
-    refreshTokens() {}
+    async refreshTokens(userId: string, refreshToken: string) {
+        const user = await this.userModel.findOne({ _id: userId })
+        if (!user || !user.hashedRt) throw new ForbiddenException('Access denied')
+        const matchesRefreshTokens = await argon.verify(refreshToken, user.hashedRt)
+        if (!matchesRefreshTokens) throw new ForbiddenException('Access denied')
+        const tokens = await this.create_JWT_Tokens(user.id, user.email)
+        await this.updateRtHash(user.id, tokens.refresh_token)
+        return tokens
+    }
 }
